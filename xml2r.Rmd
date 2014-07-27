@@ -1,0 +1,165 @@
+---
+title: "Parser un document XML avec R"
+author: "Jcb"
+date: "16/07/2014"
+output: html_document
+---
+
+[source](http://www.omegahat.org/RSXML/Tour.pdf)
+
+On utilise comme document test le fichier __menhir_bonnet_rouge.gpx__ enregistré avec un GPS de marche (Garmin 60Cx)
+
+On parse le document et on crée l'arbre contenant les différents éléments (les données du DTD ne sont pas utilisées):
+```{r}
+library("XML")
+file <- "menhir_bonnet_rouge.gpx"
+
+doc <- xmlTreeParse(file, getDTD = F)
+```
+On récupère le _topnode_ du document avec __xmlRoot()__
+```{r}
+r <- xmlRoot(doc)
+```
+On récupère son nom avec __xmlName()__
+```{r}
+xmlName(r)
+```
+et le nombre de noeuds fils par __xmlSize()__
+```{r}
+xmlSize(r)
+```
+Dans ce cas, le résultat est $17$. Cela veut dire que le noeud racine a $17$ enfants qui sont tous des objets __XMLNode__. On peut accéder aux différents noeuds fils en utilisant l'opérateur __[[()__ . Par exemple le premier enfant:
+```{r}
+r[[1]]
+```
+C'est également un objet de la classe XMLNode. On récupère son nom et le nombre d'enfants de la même manière:
+```{r}
+xmlName(r[[1]])
+xmlSize(r[[1]])
+```
+Certains noeuds possèdent des _attributs_. Les attributs sont défini par le couple _nom = valeur_.Par exemple le noeud 2 définit un rectangle englobant la zone. Il possède 4 attributs définissant les limites du rectangle. La méthode __xmlAttrs()__ retourne la valeur des attributs:
+```{r}
+xmlName(r[[2]])
+xmlAttrs(r[[2]])
+```
+Un _XMLNode_ à 3 caractéristiques: un nom (xmlName), des attributs (xmlAttrs) et des enfants (xmlSize). La méthode __sapply(xmlNode, fun)__ permet de lister le contenu du noeud. Par exemple le nom de noeuds fils:
+```{r}
+sapply(xmlChildren(r), xmlName)
+```
+La fonction __xmlChildren()__ retourne la liste des enfants (le résultat est du type list)
+
+Appliquer (Applying) une operation aux enfants d'un noeud est une opération tellement fréquente que des fonctions spécifiques ont été crées de type __xmlApply()__ et __xmlSApply()__ qui sont de simples wrappers dont la fonction première est de fournir le liste des enfants d'un noeud particulier.
+```{r}
+xmlSApply(r[[1]], xmlName)
+xmlApply(r[[1]], xmlAttrs)
+xmlSApply(r[[1]], xmlSize)
+```
+
+class(r[[1]][[1]]) est de type __XMLTextNode__: c'est un noeud terminal qui n'a pas d'enfants (mais comme il hérite de xmlNode, il possède un slot pour des enfants!).
+```{r}
+r[[1]]
+class(r[[1]])
+r[[1]][[1]]
+class(r[[1]][[1]])
+```
+
+Ce _leaf node_ n'est pas le texte lui-même, mais il contient le texte. On récupère sa valeur avec la fonction __xmlValue()__:
+```{r}
+xmlValue(r[[1]][[1]])
+```
+Accéder à des noeuds en parcourant d'autre noeuds est laid et ennuyeux... Bien sûr il est possible d'écrire:
+```{r}
+x <- r[[1]]
+x <- x[[1]]
+xmlValue(r[[1]])
+```
+
+Nous avons vu comment nous pouvons extraire des sous-nœuds individuels d'un objet de classe XMLNode en utilisant l'opérateur [[() et en indiquant son indice. Il n'est pas surprenant que nous puissions utiliser l'opérateur __[()__ (un seul crochet) pour extraire une liste de nœuds. Par exemple,
+```{r}
+r[[4]][1:5]
+```
+retourne les 5 éléments du noeud 4:
+ - ele  élévation
+ - name n° du point
+ - cmt  commentaire
+ - desc date/heure
+ - sym  symbole
+ 
+ On peut obtenir le nom des noeuds avec la fonction __names()__:
+ 
+```{r}
+names(r[[4]])
+names(r[[4]][1])
+
+names(xmlRoot(doc)[["wpt"]])
+
+names(r[["wpt"]])
+
+```
+
+Nombre d'enfants par noeuds:
+```{r}
+xmlSApply(xmlRoot(doc), xmlSize)
+
+xmlSApply(xmlRoot(doc)[["trk"]], xmlSize)
+
+```
+La méthode __getNodeSet()__ permet de récupérer un noeud par son nom. On utilise une autre [démo](http://www.carlboettiger.info/2011/08/26/fishbase-from-r-some-xml-parsing.html) qui explore une base de données consacrée aux poissons. La BD des accessible à l'[adresse](http://fishbase.org/search.php). On s'intéresse à l'espèce __Nile tilapia__ (carpe du nil). Le moteur de recherche renvoie à la [fiche technique](http://fishbase.org/Summary/speciesSummary.php?ID=2&AT=Nile+tilapia) concernant cette espèce. A la fin de cette fiche on trouve le paragraphe _Download XML_ qui propose un [summary](http://www.fishbase.us/maintenance/FB/showXML.php?identifier=FB-2&ProviderDbase=03) de la fiche au format XML. C'est lui qui nous intéresse:
+
+```{r}
+library("RCurl")
+
+url <- "http://www.fishbase.us/maintenance/FB/showXML.php?identifier=FB-2&ProviderDbase=03"
+tt <- getURLContent(url, followlocation=TRUE)
+doc <- xmlParse(tt)
+
+Family <- xmlValue(getNodeSet(doc, "//dwc:Family")[[1]])
+Family
+
+```
+NB: la librairie RCurl permet de télécharger unfichier sur internet via __getURLContent()__.
+
+Il y a 2 commandes en une ligne. _getNodeSet()_ est la première, obtenir tous les nœuds qui ont le nom _family: dwc_ partout (le // signifie partout) dans le document. Le [[1]] indique que nous voulons que le premier noeud qu'il trouve (car il n'y a qu'un seul de ce type dans l'ensemble du document). Pour spécifier quel nœud nous voulons on utilise la syntaxe [xpath](http://www.w3schools.com/xpath/default.asp), un puissant moyen de naviguer en XML que nous allons utiliser plus tard. 
+
+La commande _xmlValue()_ extrait la valeur du noeud.
+
+XML en dataframe
+----------------
+
+[source](http://giventhedata.blogspot.fr/2012/06/r-and-web-for-beginners-part-ii-xml-in.html)
+
+```{r}
+xml.url <- "http://www.w3schools.com/xml/plant_catalog.xml"
+xmlfile <- xmlTreeParse(xml.url)
+class(xmlfile)
+xmltop = xmlRoot(xmlfile)
+print(xmltop)[1:2]
+
+# To extract the XML-values from the document, use xmlSApply: 
+plantcat <- xmlSApply(xmltop, function(x) xmlSApply(x, xmlValue))
+
+plantcat_df <- data.frame(t(plantcat),row.names=NULL)
+head(plantcat_df)
+```
+
+Application aux RPU
+===================
+
+[source](http://stackoverflow.com/questions/17198658/how-to-parse-xml-to-r-data-frame)
+
+On exploite le fichier __rpu.html__ qui contient des exemples de rpu.
+
+Data in XML format are rarely organized in a way that would allow the xmlToDataFrame function to work. You're better off extracting everything in lists and then binding the lists together in a data frame:
+
+```{r}
+library("XML")
+file <- "rpu.html"
+data <- xmlParse(file)
+xml_data <- xmlToList(data) # 1 liste = 1 enregistrement complet
+out <- data.frame(as.list(xml_data[["entete"]]), as.list(xml_data[["element"]]))
+out
+
+as.list(xml_data[["element"]][["LISTE_DA"]])
+s.list(xml_data[["element"]][["LISTE_ACTES"]])
+```
+
